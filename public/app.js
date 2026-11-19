@@ -1,3 +1,18 @@
+// ---- Telegram Mini App bootstrap ----
+const tg=window.Telegram?.WebApp;
+const inTelegram=!!(tg&&tg.initData);
+const apiHeaders=()=>inTelegram?{"X-Telegram-Init-Data":tg.initData}:{};
+if(tg){
+  try{
+    tg.ready();tg.expand();
+    if(tg.disableVerticalSwipes)tg.disableVerticalSwipes();
+    const applyTheme=()=>{const t=tg.themeParams||{};const r=document.documentElement.style;
+      if(t.bg_color&&!document.body.dataset.keepDark){/* keep cinematic dark theme; only set chrome colors */}
+      try{tg.setHeaderColor("#090b12");tg.setBackgroundColor("#090b12")}catch{}};
+    applyTheme();tg.onEvent("themeChanged",applyTheme);
+    document.documentElement.classList.add("tg");
+  }catch{}
+}
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const store={get(k,d=[]){try{return JSON.parse(localStorage.getItem("mb_"+k))??d}catch{return d}},set(k,v){localStorage.setItem("mb_"+k,JSON.stringify(v))}};
 let favorites=store.get("favorites"),history=store.get("history"),streams=store.get("streams"),downloads=store.get("downloads"),libraryTab="favorites";
@@ -14,11 +29,11 @@ function card(item,kind="discover"){
 }
 function renderContinue(){const el=$("#continueGrid");el.innerHTML=history.length?history.slice(0,4).map(x=>card(x,"history")).join(""):`<div class="empty">Your progress will appear here after you play a video.</div>`}
 function renderLibrary(){let data=libraryTab==="favorites"?favorites:libraryTab==="history"?history:streams;$("#libraryGrid").innerHTML=data.length?data.map(x=>card(x,libraryTab)).join(""):`<div class="empty">Nothing here yet. Add a stream or save a title to get started.</div>`}
-async function search(){const q=$("#searchInput").value.trim();if(!q)return toast("Enter a title to search.");$("#results").innerHTML='<div class="empty">Searching…</div>';try{const r=await fetch(`/api/search?q=${encodeURIComponent(q)}&type=${$("#searchType").value}`);const d=await r.json();if(!r.ok)throw Error(d.error);$("#results").innerHTML=d.results.length?d.results.map(x=>card(x,"discover")).join(""):`<div class="empty">No results found.</div>`}catch(e){$("#results").innerHTML=`<div class="empty">${esc(e.message)}<br><br>Set TMDB_API_KEY in your server .env file and restart.</div>`}}
+async function search(){const q=$("#searchInput").value.trim();if(!q)return toast("Enter a title to search.");$("#results").innerHTML='<div class="empty">Searching…</div>';try{const r=await fetch(`/api/search?q=${encodeURIComponent(q)}&type=${$("#searchType").value}`,{headers:apiHeaders()});const d=await r.json();if(!r.ok)throw Error(d.error);$("#results").innerHTML=d.results.length?d.results.map(x=>card(x,"discover")).join(""):`<div class="empty">No results found.</div>`}catch(e){$("#results").innerHTML=`<div class="empty">${esc(e.message)}<br><br>Set TMDB_API_KEY in your server .env file and restart.</div>`}}
 function openModal(id){$("#"+id).classList.remove("hidden")}function closeModal(id){$("#"+id).classList.add("hidden")}
 function play(title,url,item){if(!url){openModal("addModal");$("#streamTitle").value=title;toast("Add an authorized playback URL to play this title.");return}$("#playerTitle").textContent=title;const v=$("#videoPlayer");v.pause();v.src=url;v.load();openModal("playerModal");v.play().catch(()=>{});const entry={...(item||{}),title,url,watchedAt:Date.now()};history=[entry,...history.filter(x=>x.url!==url)].slice(0,100);store.set("history",history);renderContinue();renderLibrary()}
 function toggleFav(id,kind){const source=kind==="streams"?streams:kind==="history"?history:[];let item=source.find(x=>String(x.id??x.url??x.title)===String(id));if(!item){item={id,title:document.querySelector(`[data-fav="${CSS.escape(id)}"]`)?.closest(".media-card")?.querySelector("h3")?.textContent||"Saved title"}}
- const exists=favorites.some(x=>String(x.id??x.url??x.title)===String(id));favorites=exists?favorites.filter(x=>String(x.id??x.url??x.title)!==String(id)):[item,...favorites];store.set("favorites",favorites);renderContinue();renderLibrary();if(!$("#homeView").classList.contains("hidden"))search();toast(exists?"Removed from favorites":"Added to favorites")}
+ const exists=favorites.some(x=>String(x.id??x.url??x.title)===String(id));favorites=exists?favorites.filter(x=>String(x.id??x.url??x.title)!==String(id)):[item,...favorites];store.set("favorites",favorites);renderContinue();renderLibrary();if(!$("#homeView").classList.contains("hidden")&&$("#searchInput").value.trim())search();toast(exists?"Removed from favorites":"Added to favorites")}
 document.addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;if(b.dataset.view){$$(".view").forEach(x=>x.classList.add("hidden"));$("#"+b.dataset.view+"View").classList.remove("hidden");$$(".nav-link").forEach(x=>x.classList.toggle("active",x===b));if(b.dataset.view==="library")renderLibrary();if(b.dataset.view==="downloads")renderDownloads()}
 if(b.dataset.close)closeModal(b.dataset.close);if(b.id==="browseBtn")$("#searchInput").focus();if(b.id==="addMediaBtn")openModal("addModal");if(b.id==="settingsBtn")openModal("settingsModal");if(b.dataset.library){libraryTab=b.dataset.library;$$(".tab").forEach(x=>x.classList.toggle("active",x===b));renderLibrary()}
 if(b.dataset.play){let item=[...favorites,...history,...streams].find(x=>String(x.id??x.url??x.title)===b.dataset.play);play(b.dataset.title,b.dataset.url||item?.url,item)}
@@ -49,6 +64,17 @@ async function startDownload(){
  const url=$("#downloadUrl").value.trim();
  if(!/^https?:\/\//i.test(url))return toast("Enter a valid direct HTTP(S) media URL.");
  if(activeDownload)return toast("A download is already running.");
+ if(inTelegram){
+   // Telegram WebView can't save blob: downloads, so hand the direct URL to Telegram / external browser.
+   const fname=(title.replace(/[\\/:*?"<>|]/g,"_")+(/\.[a-z0-9]{2,4}($|\?)/i.test(url)?"":".mp4"));
+   try{
+     if(tg.isVersionAtLeast&&tg.isVersionAtLeast("8.0")&&tg.downloadFile){
+       tg.downloadFile({url,file_name:fname},ok=>{if(ok)saveDownloadRecord({title,url,status:"Download requested",date:new Date().toLocaleString()})});
+     }else{tg.openLink(url);saveDownloadRecord({title,url,status:"Opened in browser",date:new Date().toLocaleString()})}
+     $("#downloadStatus").textContent="Download handed to Telegram. Check your device Downloads.";
+   }catch{tg.openLink(url)}
+   return;
+ }
  const controller=new AbortController();activeDownload={controller,title,url};
  const status=$("#downloadStatus");status.innerHTML=`Preparing ${esc(title)}…`;
  try{
@@ -86,3 +112,20 @@ document.addEventListener("click",e=>{
  if(b.dataset.removeDownload!==undefined){downloads.splice(Number(b.dataset.removeDownload),1);store.set("downloads",downloads);renderDownloads()}
 });
 renderDownloads();
+
+
+// ---- Telegram BackButton: close modals first, then go back to Home ----
+if(tg&&tg.BackButton){
+  const modals=["playerModal","addModal","settingsModal"];
+  const openModalId=()=>modals.find(id=>!$("#"+id).classList.contains("hidden"));
+  const homeActive=()=>!$("#homeView").classList.contains("hidden");
+  const syncBack=()=>{(openModalId()||!homeActive())?tg.BackButton.show():tg.BackButton.hide()};
+  tg.BackButton.onClick(()=>{
+    const m=openModalId();
+    if(m){if(m==="playerModal")$("#videoPlayer").pause();closeModal(m)}
+    else if(!homeActive()){$('.nav-link[data-view="home"]').click()}
+    syncBack();
+  });
+  new MutationObserver(syncBack).observe(document.body,{subtree:true,attributes:true,attributeFilter:["class"]});
+  syncBack();
+}

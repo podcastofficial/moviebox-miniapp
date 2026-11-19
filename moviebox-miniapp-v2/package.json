@@ -1,0 +1,16 @@
+{
+  "name": "moviebox-miniapp",
+  "version": "3.0.0",
+  "private": true,
+  "description": "A legal, self-hosted movie discovery and personal media Telegram Mini App.",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "setup-bot": "node scripts/setup-bot.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2"
+  }
+}

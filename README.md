@@ -91,3 +91,15 @@ moviebox-miniapp/
 ├── server.js
 └── README.md
 ```
+
+
+## Telegram Mini App setup
+
+1. Create a bot with [@BotFather](https://t.me/BotFather) → `/newbot`, copy the token.
+2. Deploy this repo to any HTTPS host (Vercel, Render, Railway…). Telegram requires HTTPS.
+3. Set env vars on the host: `TMDB_API_KEY`, `BOT_TOKEN`, `WEBAPP_URL` (your https URL), `WEBHOOK_SECRET` (random string), `REQUIRE_TELEGRAM=1`.
+4. Run once locally with the same values in `.env`: `npm run setup-bot` (sets webhook + menu button).
+5. Optional in BotFather: `/newapp` (or Bot Settings → Configure Mini App) to get a `t.me/yourbot/app` direct link.
+6. Open your bot → `/start` → **Open MovieBox**.
+
+Local testing without Telegram works as before (leave `REQUIRE_TELEGRAM=0`). Never commit `BOT_TOKEN`.
